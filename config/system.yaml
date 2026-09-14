@@ -1,0 +1,44 @@
+# Top-level system configuration.
+# Everything else (camera, perception, navigation, mqtt, robots) is loaded
+# and merged on top of this by common.config_loader.load_system_config().
+
+system:
+  name: "SentinelSwarm-3D"
+  mode: "simulation"        # "simulation" | "live"
+  log_level: "INFO"         # DEBUG | INFO | WARNING | ERROR
+  log_dir: "logs/"
+
+  # Which layers are active. Phase 1 only lights up perception + visualization;
+  # later phases flip the rest on without touching this file's shape.
+  # `lidar` (Phase 1B) is independent of `perception`'s camera/YOLO/DA3
+  # pipeline — main.py doesn't touch it; only run_leader.py does.
+  layers:
+    camera: true
+    perception: true
+    geometry: true
+    localization: false
+    mapping: false
+    navigation: false
+    lidar: true
+    swarm: false
+    formation: false
+    shaper: false
+    visualization: true
+
+  # Real-time safety watchdog (see hardware/ and main.py)
+  watchdog:
+    perception_timeout_s: 2.0     # if no fresh detections/depth in this window, degrade
+    control_loop_hz: 20
+    # LiDAR (YDLiDAR X4 Pro) is the primary ranging/obstacle sensor — there
+    # is no ultrasonic fallback in the active Leader runtime.
+    degrade_policy: ["slow", "lidar_safety", "stop"]
+
+config_files:
+  camera: "config/camera.yaml"
+  perception: "config/perception.yaml"
+  navigation: "config/navigation.yaml"
+  mqtt: "config/mqtt.yaml"
+  robots: "config/robots.yaml"
+  leader: "config/leader.yaml"
+  lidar: "config/lidar.yaml"
+  safety: "config/safety.yaml"

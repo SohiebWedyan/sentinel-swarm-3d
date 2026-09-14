@@ -1,0 +1,91 @@
+# YDLiDAR X4 Pro configuration.
+#
+# The hardware-profile fields below (baudrate, sample_rate, ranges,
+# lidar_type, single_channel, is_tof) are FACTS about the X4 Pro, not
+# preferences: hardware/lidar/ydlidar_x4_pro_driver.py validates them
+# against its built-in X4ProProfile and refuses to start on a mismatch,
+# rather than running a misconfigured device that returns silence or
+# garbage. They are written out here anyway so the deployed configuration
+# is self-documenting.
+#
+# simulation_mode is the ONLY switch that selects MockLidar. A real driver
+# that cannot find its hardware stays a real driver and reports itself
+# unhealthy — it never silently falls back to synthetic scans.
+
+lidar:
+  enabled: true
+
+  driver: "ydlidar_x4_pro"
+  model: "X4_PRO"
+
+  simulation_mode: false      # true -> MockLidar, no hardware touched
+
+  # "auto" probes SDK-enumerated ports, then /dev/ydlidar, /dev/ttyUSB0,
+  # /dev/ttyUSB1, /dev/ttyACM0, /dev/ttyACM1 — and accepts a port only if
+  # the YDLiDAR SDK successfully initializes the device on it. Override
+  # with an explicit path (e.g. "/dev/ttyUSB0") to skip probing.
+  port: "auto"
+
+  baudrate: 128000            # X4 Pro fixed; any other value is rejected
+  sample_rate: 5              # kHz
+
+  # EXPECTED rotation rate, not a command. The X4 Pro's speed is set by its
+  # motor; this project does not assume the SDK can change it. Used for
+  # configuration plausibility checks, health monitoring, and diagnostics
+  # (the measured rate is reported next to this one). Must fall inside the
+  # hardware's 6-12 Hz band.
+  expected_scan_frequency_hz: 10.0
+
+  min_distance: 0.12          # meters
+  max_distance: 10.0          # meters
+  scan_angle: 360.0           # degrees
+
+  lidar_type: "triangle"      # TYPE_TRIANGLE — NOT ToF
+  # Maps to the SDK's LidarPropSingleChannel. This is the field most worth
+  # confirming against the physical unit — see the note in
+  # hardware/lidar/ydlidar_x4_pro_driver.py's X4ProProfile.
+  single_channel: true
+  is_tof: false
+
+  frame_id: "lidar"
+
+  reversion: true             # applied by the SDK
+  inverted: false             # applied by the SDK
+  angle_offset: 0.0           # extra mounting calibration, applied by this project
+
+  auto_reconnect: true
+  scan_timeout: 2.0            # seconds without a scan before reporting unhealthy
+  health_check_interval: 1.0    # seconds between status publishes from lidar_process
+
+  filtering:
+    enable_noise_filter: true
+    # A point is dropped only if it disagrees with BOTH circular neighbors
+    # by more than this — real obstacle edges step on one side only and
+    # therefore survive. Raise it (or disable the filter) if you ever see
+    # legitimate thin obstacles being removed.
+    max_neighbor_jump_m: 1.5
+
+  obstacle_sectors:
+    min_points_for_valid_sector: 3
+    # Flags obstacle_detected in a sector summary. The NORMAL/CAUTION/STOP/
+    # EMERGENCY banding used for safety comes from config/safety.yaml, which
+    # is the single source of truth for those distances; leaving this unset
+    # makes it default to safety.caution_distance_m.
+    obstacle_distance_m: 0.8
+    # Signed degrees, 0 = straight ahead, positive = left (counter-clockwise).
+    # REAR wraps across +/-180 so it takes two ranges.
+    sectors_deg:
+      front:       [[-30, 30]]
+      front_left:  [[30, 75]]
+      front_right: [[-75, -30]]
+      left:        [[75, 105]]
+      right:       [[-105, -75]]
+      rear:        [[105, 180], [-180, -105]]
+
+  # Only used when simulation_mode is true.
+  simulation:
+    points_per_scan: 360
+    room_radius_m: 4.0
+    obstacle_distance_m: 0.6
+    obstacle_half_width_deg: 12.0
+    obstacle_sweep_deg_per_s: 20.0

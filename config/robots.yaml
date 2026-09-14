@@ -1,0 +1,47 @@
+# Fleet definition: one leader, N followers.
+# robot_role selects which behaviors/topics a given process runs as.
+
+robots:
+  this_robot: "leader"     # which entry below this process instantiates
+
+  fleet:
+    leader:
+      robot_id: "leader"
+      robot_role: "leader"
+      compute: "jetson_orin_nano"
+      companion: "raspberry_pi"
+      sensors:
+        camera: true
+        imu: true
+        gps: true
+        pixhawk: false
+        # YDLiDAR X4 Pro replaces ultrasonic as the Leader's primary
+        # ranging/obstacle sensor. See config/lidar.yaml.
+        lidar: true
+        wheel_encoders: true
+      camera_config: "config/camera.yaml"
+      lidar_config: "config/lidar.yaml"
+
+    follower_01:
+      robot_id: "follower_01"
+      robot_role: "follower"
+      compute: "raspberry_pi"
+      sensors:
+        camera: true
+        imu: true
+        gps: false
+        ultrasonic: true
+        wheel_encoders: true
+      formation_offset: [-1.0, 0.0]
+
+    follower_02:
+      robot_id: "follower_02"
+      robot_role: "follower"
+      compute: "raspberry_pi"
+      sensors:
+        camera: true
+        imu: true
+        gps: false
+        ultrasonic: true
+        wheel_encoders: true
+      formation_offset: [-2.0, 0.0]

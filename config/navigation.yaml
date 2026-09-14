@@ -1,0 +1,41 @@
+# Navigation stack configuration (Phase 4+). Present now so the config
+# surface is stable; navigation/ only reads this once layers.navigation
+# is enabled in system.yaml.
+
+navigation:
+  global_planner:
+    backend: "dstar_lite"          # pluggable: dstar_lite today
+    replan_on_map_update: true
+    grid_resolution_m: 0.1
+
+  local_planner:
+    backend: "dwa"                 # pluggable: dwa -> teb -> mpc -> rl later
+    max_linear_velocity_mps: 0.6
+    max_angular_velocity_radps: 1.2
+    prediction_horizon_s: 2.0
+    velocity_samples: 15
+    angular_samples: 15
+    obstacle_inflation_m: 0.15
+
+  safety:
+    emergency_stop_distance_m: 0.2
+    slow_zone_distance_m: 0.6
+    # If camera/AI perception fails, the robot falls back to LiDAR-only
+    # clearance (config/lidar.yaml + config/safety.yaml), then stops.
+    lidar_safety_fallback: true
+    ai_inference_failure_policy: ["slow", "lidar_safety", "stop"]
+
+  formation:
+    default_shape: "line"          # line | triangle | v | custom
+    spacing_m: 1.0
+    offsets:
+      line:
+        follower_01: [-1.0, 0.0]
+        follower_02: [-2.0, 0.0]
+      triangle:
+        follower_01: [-1.0, 0.8]
+        follower_02: [-1.0, -0.8]
+      v:
+        follower_01: [-1.0, 1.0]
+        follower_02: [-1.0, -1.0]
+    min_robot_separation_m: 0.5

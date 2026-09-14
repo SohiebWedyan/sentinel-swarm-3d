@@ -1,0 +1,101 @@
+# Perception pipeline: detector, depth estimator, fusion, tracker.
+
+perception:
+  detector:
+    backend: "yolo"
+    model_path: "yolov8n.pt"     # Ultralytics will auto-download if missing
+    device: "cuda:0"             # "cuda:0" | "cpu" | "mps" (falls back to CPU if no CUDA)
+    confidence_threshold: 0.35
+    iou_threshold: 0.45
+    classes: null                 # null = all classes; else list of class ids
+    max_detections: 50
+    image_size: 640               # YOLO inference size (imgsz); lower = faster
+
+  depth:
+    enabled: true
+
+    # "auto"         -> real model IF model_path is set, else the mock
+    # "transformers" -> require the real model (mock only if loading fails)
+    # "mock"         -> always the synthetic generator
+    #
+    # "auto" deliberately needs an explicit model_path: starting the process
+    # should never silently download a checkpoint nobody named.
+    backend: "auto"
+
+    # HuggingFace id or local directory. Empty means "run the mock" — the
+    # pipeline stays runnable with no model, but mock output is SYNTHETIC
+    # and must never be presented as DA3 output.
+    #
+    # Supported checkpoints: the implementation uses transformers'
+    # AutoImageProcessor + AutoModelForDepthEstimation, so any Depth
+    # Anything checkpoint published in HF format works. For an 8 GB Orin
+    # Nano running YOLO alongside it:
+    #
+    #   depth-anything/Depth-Anything-V2-Small-hf   ~25M params  <- recommended
+    #   depth-anything/Depth-Anything-V2-Base-hf    ~98M params  tight
+    #   depth-anything/Depth-Anything-V2-Large-hf   ~335M params too big here
+    #
+    # The V2-*-hf variants output RELATIVE inverse depth (unitless). There
+    # are separate metric-finetuned checkpoints; if you ever switch to one,
+    # DA3DepthEstimator.get_depth_kind() must be updated to report METRIC —
+    # it currently hard-codes RELATIVE, which is correct for the above.
+    #
+    # First run downloads the weights, so it needs network access once.
+    # To go offline afterwards, point model_path at the local snapshot dir.
+    model_path: ""
+
+    model_size: "small"           # small | base | large (mirrors DA3 checkpoints)
+    device: "cuda:0"
+    precision: "fp16"             # fp32 | fp16 (fp16 only applies on CUDA)
+    inference_resolution: [504, 280]
+    inference_frequency_hz: 6.0    # async path only; matches measured Orin Nano throughput
+    async_processing: true
+    max_queue_size: 2              # drop stale frames rather than block
+
+    # NOTE ON UNITS: monocular DA3 output is RELATIVE depth — unitless and
+    # up to an unknown per-frame scale. It is published as
+    # DepthKind.RELATIVE and must NOT be read as meters. Metric 3D
+    # localization needs a metric source or a scale solved against a known
+    # reference first.
+
+  # runtime/perception_process.py
+  process:
+    # Frames older than this are discarded instead of processed late. On a
+    # robot a stale answer is usually worse than no answer.
+    stale_frame_max_age_s: 0.5
+    publish_frame: true            # include the RGB frame for visualization
+    publish_depth: true            # include the depth map in the result
+    health_check_interval: 1.0
+
+    # Run depth on every Nth processed frame. Detection still runs on every
+    # frame, so a slow depth model no longer caps the detection rate — on a
+    # Jetson running depth in PyTorch, 1/(yolo+depth) would otherwise drag
+    # detections down to a few FPS.
+    #
+    # This does NOT weaken synchronization: a result either carries depth
+    # from THAT SAME frame, or carries no depth (depth: None). Depth from a
+    # different frame is never attached to a result.
+    #
+    # 1 = depth on every frame (most accurate pairing, lowest FPS).
+    depth_every_n_frames: 1
+
+  fusion:
+    bbox_subregion_fraction: 0.4   # central fraction of the box used for median depth
+    min_valid_depth_m: 0.15
+    max_valid_depth_m: 40.0
+    min_valid_depth_samples: 5
+
+  tracker:
+    backend: "bytetrack"           # "bytetrack" | "botsort" | "iou" (fallback)
+    track_thresh: 0.5
+    match_thresh: 0.8
+    track_buffer_frames: 30
+    min_hits_to_confirm: 3
+    kalman_filter: true
+
+  visualization:
+    show_camera_feed: true
+    show_detections: true
+    show_depth_map: true
+    show_track_ids: true
+    window_scale: 1.0

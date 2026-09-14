@@ -1,0 +1,28 @@
+# Leader-only single-robot runtime mode.
+#
+# This is the CURRENT active mode: SentinelSwarm-3D runs as exactly one
+# autonomous Leader UGV. Every swarm/multi-robot capability already in the
+# codebase (config/mqtt.yaml, config/navigation.yaml's formation block,
+# swarm/, config/robots.yaml's follower_01/follower_02 entries) is left in
+# place for when follower robots are added later — this file is what keeps
+# it switched off in the meantime, not deletion of any of that.
+#
+# run_leader.py and runtime/process_manager.py read these flags to decide
+# what actually gets started; nothing swarm-shaped is registered with the
+# process supervisor while swarm_enabled is false.
+
+leader:
+  robot_role: "leader"
+  robot_mode: "leader_only"
+
+  swarm_enabled: false
+  followers_enabled: false
+  formation_enabled: false
+  global_multi_robot_map_enabled: false
+  shaper_enabled: false
+
+  # Motors are never auto-started by config alone — this flag exists for
+  # Phase 1E/1F's robot_bridge_process, which will refuse to forward any
+  # velocity command upstream of it unless this is explicitly true. No
+  # motor-control code exists anywhere in the repository yet.
+  motors_enabled: false

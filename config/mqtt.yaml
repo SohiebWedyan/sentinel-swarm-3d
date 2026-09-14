@@ -1,0 +1,30 @@
+# MQTT swarm communication configuration (Phase 5+).
+
+mqtt:
+  broker_host: "localhost"
+  broker_port: 1883
+  keepalive_s: 30
+  client_id_prefix: "sentinelswarm"
+  qos: 1
+  use_tls: false
+
+  # Topic templates. "{robot_id}" is substituted at runtime from robots.yaml.
+  topics:
+    leader_pose: "swarm/leader/pose"
+    leader_status: "swarm/leader/status"
+    leader_path: "swarm/leader/path"
+    leader_objects: "swarm/leader/objects"
+    follower_pose: "swarm/{robot_id}/pose"
+    follower_status: "swarm/{robot_id}/status"
+    follower_obstacles: "swarm/{robot_id}/obstacles"
+    global_map: "swarm/global/map"
+    global_mission: "swarm/global/mission"
+    global_emergency: "swarm/global/emergency"
+
+  publish_rates_hz:
+    pose: 10
+    status: 1
+    path: 2
+    objects: 5
+
+  serialization: "json"    # "json" today; swappable for "protobuf" later

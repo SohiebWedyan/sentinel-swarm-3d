@@ -1,0 +1,129 @@
+# Camera configuration: source + intrinsics.
+#
+# Intrinsics default to a rough 720p webcam estimate — replace fx/fy/cx/cy
+# with a real calibration (checkerboard / OpenCV calibrateCamera) before
+# trusting any projection math that uses them.
+
+camera:
+  enabled: true
+  frame_id: "camera"
+
+  # "device" | "video_file" | "simulation"
+  #
+  # NOTE: system.mode in config/system.yaml is AUTHORITATIVE and overrides
+  # this. The two modes behave differently on purpose:
+  #
+  #   system.mode: "live"        A real camera is REQUIRED. If none can be
+  #                              found the runtime FAILS LOUDLY. It never
+  #                              substitutes synthetic frames — that silent
+  #                              substitution is how a system ends up
+  #                              reporting healthy perception while looking
+  #                              at nothing, and how a hardware-verification
+  #                              run could produce a false pass.
+  #
+  #   system.mode: "simulation"  Synthetic frames are acceptable, and a real
+  #                              webcam is used opportunistically when
+  #                              simulation.kind says so. Any fallback is
+  #                              logged, never silent.
+  #
+  # source_type: "device" also forces a real camera regardless of mode.
+  source_type: "simulation"
+
+  # OpenCV index, used when device_path is empty.
+  #
+  # null = AUTO-DISCOVER (recommended): every /dev/video* is probed and the
+  # first that actually delivers a frame is used, so nothing is guessed.
+  # An integer here is treated as a deliberate operator choice and is used
+  # as configured, without probing.
+  device_index: null
+
+  # Explicit device node. STRONGLY preferred on the robot: indices get
+  # reassigned across reboots and between USB ports, so an index that works
+  # today can silently select a different camera tomorrow.
+  #
+  # Leave empty in LIVE mode to auto-discover: every /dev/video* is probed
+  # and the first that actually DELIVERS A FRAME is used (opening alone is
+  # not evidence — metadata nodes open fine and never produce an image).
+  # Find yours with:  v4l2-ctl --list-devices
+  device_path: ""
+
+  video_file: "data/sample_videos/sample.mp4"
+  simulation:
+    kind: "webcam"            # "synthetic" | "webcam" | "video_file"
+    fallback_video: "data/sample_videos/sample.mp4"
+
+  width: 1280
+  height: 720
+  fps: 30
+
+  # Intel RealSense D435 validation only. This is intentionally separate
+  # from the generic OpenCV source above: D435 stereo depth, alignment and
+  # point-cloud generation require librealsense. A D435 has NO internal IMU;
+  # do not configure or expect IMU streams here.
+  realsense_d435:
+    serial_no: ""             # optional; pin a specific camera when populated
+    width: 640
+    height: 480
+    fps: 30
+    sample_duration_s: 3.0
+    minimum_frames: 30
+    warmup_frames: 10
+    frame_timeout_ms: 2000
+    max_consecutive_timeouts: 3
+    required_usb_prefix: "3."
+    minimum_fps_ratio: 0.85
+
+  # Low-level capture tuning. These three defaults exist because of specific
+  # real-hardware failure modes — none of them show up in simulation.
+  hardware:
+    # "auto" picks V4L2 on Linux. Left to itself OpenCV may choose the
+    # FFMPEG backend for a camera device, which ignores the settings below
+    # and warns about libavdevice.
+    backend: "auto"          # "auto" | "v4l2" | "gstreamer" | "any"
+
+    # Pixel format. A USB webcam defaults to uncompressed YUYV, whose
+    # bandwidth caps 1280x720 at roughly 5-10 FPS over USB 2.0; MJPG is
+    # compressed and reaches the full 30 FPS at the same resolution. If the
+    # log warns that MJPG was not accepted, check what the device really
+    # supports:  v4l2-ctl --list-formats-ext -d /dev/video0
+    fourcc: "MJPG"           # set "" to leave the driver default alone
+
+    # V4L2 queues captured frames and read() returns the OLDEST. At the
+    # default depth (often 4) every frame is already ~130 ms stale at
+    # 30 FPS, which defeats the latest-frame-only design in
+    # runtime/camera_process.py. 1 keeps read() close to "now".
+    buffer_size: 1
+
+  # Seconds between CameraStatus publications from camera_process.
+  health_check_interval: 1.0
+
+  reconnect:
+    enabled: true
+    max_attempts: 0           # 0 = retry forever
+    initial_delay_s: 1.0
+    max_delay_s: 10.0         # exponential backoff is capped here
+
+  ipc:
+    # Scale applied to frames BEFORE they cross the process boundary.
+    # 1.0 = publish at native capture resolution.
+    #
+    # WARNING: any value below 1.0 makes the intrinsics below no longer
+    # describe the published frame. FramePacket.scale_from_capture records
+    # the factor so a consumer doing projection math can correct fx/fy/cx/cy;
+    # nothing is corrected automatically. Leave at 1.0 unless IPC bandwidth
+    # is measurably the bottleneck.
+    scale: 1.0
+
+  # Pinhole intrinsics (pixels). fx/fy focal length, cx/cy principal point.
+  intrinsics:
+    fx: 900.0
+    fy: 900.0
+    cx: 640.0
+    cy: 360.0
+    distortion: [0.0, 0.0, 0.0, 0.0, 0.0]   # k1 k2 p1 p2 k3
+
+  # Static camera -> robot-frame extrinsics (meters, radians). Identity by
+  # default (camera treated as coincident with robot origin, forward-facing).
+  extrinsics:
+    translation: [0.0, 0.0, 0.0]     # x, y, z relative to robot base
+    rotation_rpy: [0.0, 0.0, 0.0]    # roll, pitch, yaw
