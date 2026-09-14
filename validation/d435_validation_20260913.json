@@ -1,0 +1,85 @@
+{
+  "device": {
+    "name": "RealSense D435",
+    "serial": "215322073372",
+    "firmware": "5.12.7.150",
+    "usb_type": "3.2",
+    "color_intrinsics": {
+      "width": 640,
+      "height": 480,
+      "fx": 605.0286865234375,
+      "fy": 604.6177978515625,
+      "ppx": 322.2228698730469,
+      "ppy": 248.9774627685547
+    },
+    "depth_intrinsics": {
+      "width": 640,
+      "height": 480,
+      "fx": 386.1925354003906,
+      "fy": 386.1925354003906,
+      "ppx": 326.1069030761719,
+      "ppy": 238.5619659423828
+    }
+  },
+  "checks": [
+    {
+      "name": "Device model",
+      "status": "PASS",
+      "detail": "Detected RealSense D435; expected Intel RealSense D435 (not D435i)",
+      "metrics": {}
+    },
+    {
+      "name": "USB3",
+      "status": "PASS",
+      "detail": "Reported USB link: 3.2",
+      "metrics": {
+        "usb_type": "3.2",
+        "required_prefix": "3."
+      }
+    },
+    {
+      "name": "RGB",
+      "status": "PASS",
+      "detail": "shape=(480, 640, 3)",
+      "metrics": {}
+    },
+    {
+      "name": "Depth",
+      "status": "PASS",
+      "detail": "shape=(480, 640); valid pixels/frame min=276209",
+      "metrics": {}
+    },
+    {
+      "name": "RGB-Depth alignment",
+      "status": "PASS",
+      "detail": "colour=(480, 640), aligned depth=(480, 640)",
+      "metrics": {}
+    },
+    {
+      "name": "PointCloud",
+      "status": "PASS",
+      "detail": "finite vertices=307200, nonzero vertices=277819",
+      "metrics": {}
+    },
+    {
+      "name": "Intrinsics",
+      "status": "PASS",
+      "detail": "Colour intrinsics available",
+      "metrics": {}
+    },
+    {
+      "name": "FPS",
+      "status": "PASS",
+      "detail": "RGB/depth 27.91 FPS; target 30.0 FPS",
+      "metrics": {
+        "delivered_fps": 27.91,
+        "target_fps": 30.0
+      }
+    }
+  ],
+  "rgb_fps": 27.91,
+  "depth_fps": 27.91,
+  "sample_count": 84,
+  "overall_status": "PASS",
+  "generated_at": "2026-09-13T17:43:37.448726+00:00"
+}
