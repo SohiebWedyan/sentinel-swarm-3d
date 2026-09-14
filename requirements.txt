@@ -1,0 +1,60 @@
+# SentinelSwarm-3D — Phase 1 dependencies
+# Core
+numpy>=1.24,<2.0
+scipy>=1.10
+PyYAML>=6.0
+
+# Vision / perception
+opencv-python>=4.8
+# Intel RealSense D435 validation uses the librealsense Python binding. On
+# Jetson install the JetPack-compatible librealsense/pyrealsense2 package;
+# keep this optional so CI and simulation do not need camera hardware.
+# pyrealsense2
+torch>=2.1
+torchvision>=0.16
+ultralytics>=8.1        # YOLO detector
+
+# Real monocular depth (Depth Anything) via HuggingFace. Optional: the
+# depth estimator runs its mock generator when perception.depth.model_path
+# is empty or transformers is missing, so the pipeline stays runnable
+# without it. Required only to run a real model on the Jetson.
+# transformers>=4.40
+supervision>=0.20,<0.31  # ByteTrack implementation used by perception.tracking.
+                          # Pinned below 0.31: that release deprecates the
+                          # ByteTrack constructor args this project uses
+                          # (see perception/tracking/bytetrack_tracker.py).
+                          # Bump the pin and update the constructor call together.
+
+# Depth (Depth Anything 3). Left loose on purpose: on Jetson this is normally
+# installed from NVIDIA's TensorRT-enabled wheel / a vendored repo rather
+# than PyPI. The DA3DepthEstimator degrades gracefully if this import fails.
+# transformers>=4.40    # uncomment if using the HF DA3 checkpoint route
+# tensorrt              # provided by JetPack on Jetson, do not pip install on x86
+
+# Swarm communication (used starting Phase 5, imported now for the stub interfaces)
+paho-mqtt>=1.6,<2.0
+
+# LiDAR: YDLiDAR X4 Pro.
+#
+# The driver uses the OFFICIAL YDLiDAR SDK, which is NOT a PyPI package and
+# therefore cannot be pinned here. Install it separately on the Jetson:
+#
+#   git clone https://github.com/YDLIDAR/YDLidar-SDK
+#   cd YDLidar-SDK && mkdir build && cd build
+#   cmake .. && make && sudo make install
+#   cd ../ && pip install .
+#
+# Without it, hardware/lidar/ydlidar_x4_pro_driver.py reports the LiDAR
+# unhealthy (it never fakes scans); simulation_mode: true in
+# config/lidar.yaml runs MockLidar instead, which needs nothing extra.
+#
+# pyserial is not required by the driver (the SDK owns the serial link) but
+# is handy for manually inspecting/enumerating device nodes during bring-up.
+pyserial>=3.5
+
+# Dev / testing
+pytest>=7.4
+
+# Optional, future phases
+# geopy                 # GPS <-> local ENU conversions (Phase 3+)
+# pyproj                # geodetic transforms (Phase 3+)

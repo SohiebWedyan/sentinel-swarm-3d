@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.log
+logs/
+*.tmp
+*.cache
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+.env
+.env.*
+.vscode/*.log
