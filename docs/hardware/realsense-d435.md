@@ -70,8 +70,18 @@ source, and **nothing in runtime/ or perception/ references it**:
 So the pipeline runs on the generic camera and RELATIVE monocular depth, while
 this device's METRIC depth sits available and unused.
 
-That is a deliberate intermediate state, not an oversight - but it must not be
-described as "the system has metric depth". It has metric depth *available*.
+That is a deliberate intermediate state, not an oversight. Stated precisely:
+
+- The physical D435 unit is **VALIDATED** against real hardware.
+- The D435 **produces METRIC depth**.
+- The runtime and perception pipeline **do NOT consume** that metric depth.
+- The pipeline operates on **RELATIVE** monocular depth.
+- Therefore the current perception pipeline must **not** be characterised as
+  metric, and no measurement derived from it may be reported in metres.
+
+DepthKind carries this distinction in code - METRIC, RELATIVE, UNKNOWN - with
+UNKNOWN as the default, so a source that does not declare its unit is never
+assumed to be metric.
 
 ## What wiring it in would unblock
 
