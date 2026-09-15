@@ -11,7 +11,6 @@ An intelligent multi-robot swarm robotics platform integrating 3D perception, se
 </div>
 
 ---
-# SentinelSwarm-3D
 
 A modular, production-oriented research prototype for a multi-robot
 Leader-Follower swarm: semantic 3D perception (YOLO + Depth Anything 3),
