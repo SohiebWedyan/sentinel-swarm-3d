@@ -27,7 +27,7 @@ camera:
   #                              logged, never silent.
   #
   # source_type: "device" also forces a real camera regardless of mode.
-  source_type: "simulation"
+  source_type: "device"
 
   # OpenCV index, used when device_path is empty.
   #
@@ -45,15 +45,15 @@ camera:
   # and the first that actually DELIVERS A FRAME is used (opening alone is
   # not evidence — metadata nodes open fine and never produce an image).
   # Find yours with:  v4l2-ctl --list-devices
-  device_path: ""
+  device_path: "/dev/video4"
 
   video_file: "data/sample_videos/sample.mp4"
   simulation:
     kind: "webcam"            # "synthetic" | "webcam" | "video_file"
     fallback_video: "data/sample_videos/sample.mp4"
 
-  width: 1280
-  height: 720
+  width: 640
+  height: 480
   fps: 30
 
   # Intel RealSense D435 validation only. This is intentionally separate
@@ -86,7 +86,7 @@ camera:
     # compressed and reaches the full 30 FPS at the same resolution. If the
     # log warns that MJPG was not accepted, check what the device really
     # supports:  v4l2-ctl --list-formats-ext -d /dev/video0
-    fourcc: "MJPG"           # set "" to leave the driver default alone
+    fourcc: "YUYV"           # set "" to leave the driver default alone
 
     # V4L2 queues captured frames and read() returns the OLDEST. At the
     # default depth (often 4) every frame is already ~130 ms stale at

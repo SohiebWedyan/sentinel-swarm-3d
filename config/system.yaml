@@ -4,7 +4,7 @@
 
 system:
   name: "SentinelSwarm-3D"
-  mode: "simulation"        # "simulation" | "live"
+  mode: "live"        # "simulation" | "live"
   log_level: "INFO"         # DEBUG | INFO | WARNING | ERROR
   log_dir: "logs/"
 
