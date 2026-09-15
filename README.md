@@ -1,3 +1,16 @@
+<div align="center">
+
+<img src="logo.PNG" alt="SentinelSwarm-3D | MEJSA" width="500"/>
+
+# SentinelSwarm-3D
+
+### MEJSA — Intelligent Swarm Robotics
+
+An intelligent multi-robot swarm robotics platform integrating 3D perception, sensor fusion, SLAM, autonomous navigation, and Leader–Follower coordination.
+
+</div>
+
+---
 # SentinelSwarm-3D
 
 A modular, production-oriented research prototype for a multi-robot
