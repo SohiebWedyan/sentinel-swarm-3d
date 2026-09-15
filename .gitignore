@@ -15,3 +15,10 @@ dist/
 .env
 .env.*
 .vscode/*.log
+
+# Model weights - downloaded on demand, never committed
+*.pt
+*.onnx
+*.engine
+*.safetensors
+*.pth
