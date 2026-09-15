@@ -25,6 +25,13 @@ present only as typed interfaces/stubs so later phases plug in without
 reshaping what already works.
 
 ## Architecture at a glance
+<div align="center">
+
+<img src="docs/images/sentinelswarm-3d-pipeline.png"
+     alt="SentinelSwarm-3D System Architecture"
+     width="1000"/>
+
+</div>
 
 ```
 RGB Camera Frame
