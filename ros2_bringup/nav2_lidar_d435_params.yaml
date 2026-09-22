@@ -1,0 +1,288 @@
+# Nav2 parameters — SentinelSwarm-3D, LiDAR + RealSense D435.
+#
+# Global costmap: LiDAR only (/scan). Long range, lighting-independent.
+# Local costmap:  LiDAR + D435 point cloud in a voxel layer. The camera adds
+#                 obstacles above and below the LiDAR's single scan plane
+#                 (table edges, shelves, low objects) close to the robot.
+#
+# The D435 is deliberately NOT used for SLAM: RTAB-Map stays LiDAR-only,
+# because measured tests showed visual tracking collapsing under strong
+# lighting and in dim rooms.
+#
+# No AMCL and no map_server: RTAB-Map publishes map->odom and /rtabmap/map.
+# Running AMCL alongside it would fight over the same transform.
+#
+# Placeholder values, to replace once the chassis is measured:
+#   robot_radius, max_vel_x, max_vel_theta, acc_lim_*
+#   and the camera mounting (cam_x, cam_z, cam_pitch in the launch file)
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    navigators: ["navigate_to_pose", "navigate_through_poses"]
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+    navigate_through_poses:
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    odom_topic: /odom
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+      stateful: true
+
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      debug_trajectory_details: true
+
+      # Differential drive: no sideways motion.
+      # Start slow. Raise only after the base is trusted.
+      min_vel_x: 0.0
+      max_vel_x: 0.22
+      min_vel_y: 0.0
+      max_vel_y: 0.0
+      max_vel_theta: 0.8
+      min_speed_xy: 0.0
+      max_speed_xy: 0.22
+      min_speed_theta: 0.0
+
+      acc_lim_x: 2.0
+      acc_lim_y: 0.0
+      acc_lim_theta: 3.0
+      decel_lim_x: -2.0
+      decel_lim_y: 0.0
+      decel_lim_theta: -3.0
+
+      vx_samples: 20
+      vy_samples: 5
+      vtheta_samples: 20
+      sim_time: 1.7
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.3
+      xy_goal_tolerance: 0.25
+      trans_stopped_velocity: 0.25
+      short_circuit_trajectory_evaluation: true
+      stateful: true
+
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+                "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 4
+      height: 4
+      resolution: 0.05
+      # Circular footprint. Replace with the real polygon once the chassis
+      # dimensions are known.
+      robot_radius: 0.22
+      plugins: ["voxel_layer", "inflation_layer"]
+
+      # Voxel layer: keeps obstacle height, so a table edge at 0.7 m and a
+      # box at 0.1 m both mark the 2D costmap, while the floor is filtered
+      # out by min_obstacle_height.
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: true
+        publish_voxel_map: false        # true only for debugging; costs CPU
+        origin_z: 0.0
+        z_resolution: 0.10
+        z_voxels: 16                    # 16 x 0.10 m = 1.6 m of height
+        max_obstacle_height: 1.6
+        mark_threshold: 0
+        observation_sources: scan d435
+
+        scan:
+          topic: /scan
+          sensor_frame: laser
+          data_type: "LaserScan"
+          obstacle_max_range: 8.0
+          obstacle_min_range: 0.06
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          inf_is_valid: false
+          marking: true
+          clearing: true
+
+        d435:
+          # Verify this topic name on the Jetson with:
+          #   ros2 topic list | grep points
+          topic: /camera/camera/depth/color/points
+          data_type: "PointCloud2"
+          # Height is measured in the odom frame. Points below 5 cm are
+          # treated as floor. This only works if the base_link->camera_link
+          # TF matches the real mounting height AND tilt — a tilted camera
+          # with pitch=0 in the TF turns the floor into a wall of obstacles.
+          min_obstacle_height: 0.05
+          max_obstacle_height: 1.6
+          # The D435 is blind closer than ~0.2 m and noisy beyond ~3 m.
+          obstacle_min_range: 0.25
+          obstacle_max_range: 3.0
+          raytrace_min_range: 0.25
+          raytrace_max_range: 3.5
+          marking: true
+          clearing: true
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+      always_send_full_costmap: true
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      robot_radius: 0.22
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+        map_topic: /map
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          sensor_frame: laser
+          data_type: "LaserScan"
+          obstacle_max_range: 8.0
+          obstacle_min_range: 0.06
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          inf_is_valid: false
+          marking: true
+          clearing: true
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+      always_send_full_costmap: true
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      allow_unknown: true
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: false
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    max_rotational_vel: 0.8
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 3.0
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.22, 0.0, 0.8]
+    min_velocity: [-0.22, 0.0, -0.8]
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+    max_accel: [2.0, 0.0, 3.0]
+    max_decel: [-2.0, 0.0, -3.0]
+    odom_topic: "/odom"
+    odom_duration: 0.1
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: false
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: true
+      waypoint_pause_duration: 200
