@@ -22,3 +22,10 @@ dist/
 *.engine
 *.safetensors
 *.pth
+
+# ROS / runtime-generated artifacts - never committed
+*.db
+*.pgm
+*.bak*
+frames_*.gv
+frames_*.pdf

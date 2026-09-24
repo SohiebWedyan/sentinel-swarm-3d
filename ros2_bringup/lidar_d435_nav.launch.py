@@ -42,6 +42,9 @@ colour stream), 15 Hz, and a decimation filter that cuts the point cloud from
 ~307k to ~19k points per frame.
 """
 
+import atexit
+import os
+
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, GroupAction,
                             IncludeLaunchDescription, TimerAction)
@@ -52,8 +55,40 @@ from launch.substitutions import (LaunchConfiguration, PathJoinSubstitution,
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Nav2/RTAB-Map node names here are hardcoded, not namespaced per launch
+# instance. Running this file twice at once silently doubles every
+# software node (controller_server, planner_server, both costmaps,
+# rtabmap, ...) in the shared ROS graph instead of erroring — that
+# happened once during development when a second `ros2 launch` was
+# started to test RViz while an earlier one was still running in the
+# background. This lock makes a second concurrent launch fail loudly
+# instead of doing that again.
+_LOCK_FILE = "/tmp/sentinelswarm_lidar_d435_nav.lock"
+
+
+def _guard_single_instance():
+    if os.path.exists(_LOCK_FILE):
+        with open(_LOCK_FILE) as f:
+            old_pid = f.read().strip()
+        if old_pid.isdigit() and os.path.exists(f"/proc/{old_pid}"):
+            with open(f"/proc/{old_pid}/cmdline", "rb") as f:
+                cmdline = f.read().decode(errors="replace")
+            if "lidar_d435_nav.launch.py" in cmdline:
+                raise RuntimeError(
+                    f"lidar_d435_nav.launch.py is already running as PID "
+                    f"{old_pid}. Running it twice duplicates every Nav2/"
+                    f"RTAB-Map node in the ROS graph (their names aren't "
+                    f"per-instance). Stop that launch first, or if it's "
+                    f"actually dead, remove {_LOCK_FILE} and retry.")
+    with open(_LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(lambda: os.path.exists(_LOCK_FILE) and os.remove(_LOCK_FILE))
+
 
 def generate_launch_description():
+    _guard_single_instance()
     port = LaunchConfiguration("port")
     baud = LaunchConfiguration("baud")
     lidar_z = LaunchConfiguration("lidar_z")
@@ -61,6 +96,7 @@ def generate_launch_description():
     rviz = LaunchConfiguration("rviz")
     nav2 = LaunchConfiguration("nav2")
     params_file = LaunchConfiguration("params_file")
+    rviz_config = LaunchConfiguration("rviz_config")
     delete_db = LaunchConfiguration("delete_db")
     camera = LaunchConfiguration("camera")
     cam_x = LaunchConfiguration("cam_x")
@@ -79,6 +115,13 @@ def generate_launch_description():
         DeclareLaunchArgument("delete_db", default_value="true"),
         DeclareLaunchArgument("params_file",
                               default_value="nav2_lidar_d435_params.yaml"),
+        # Project-specific lightweight config: TF/LaserScan/Map/Costmaps/Path
+        # only. No PointCloud2, no Image (see rviz_node comment below).
+        # Override with rviz_config:=/path/to/other.rviz for a different one
+        # (e.g. nav2_bringup's stock nav2_default_view.rviz).
+        DeclareLaunchArgument("rviz_config",
+                              default_value=os.path.join(
+                                  THIS_DIR, "rviz", "sentinel_lite.rviz")),
         DeclareLaunchArgument("camera", default_value="true"),
         # Bench placeholders. Measure on the real chassis.
         DeclareLaunchArgument("cam_x", default_value="0.10"),
@@ -252,16 +295,21 @@ def generate_launch_description():
         remappings=[("scan", "/scan"), ("odom", "/odom")],
     )
 
-    # RViz is the one that lets you click "2D Goal Pose".
+    # RViz is the one that lets you click "2D Goal Pose". Uses the
+    # project's lightweight config (TF/LaserScan/Map/Costmaps/Path) by
+    # default, not nav2_bringup's stock config, which pulls in a
+    # PointCloud2/Image pair pointed at Turtlebot3-era topics plus AMCL/
+    # bumper displays that don't exist in this project. Those extra
+    # displays subscribe to nothing here so they're normally inert, but a
+    # PointCloud2 display aimed at the real D435 topic (240k pts @ 6-8Hz)
+    # is what caused past freezes — this config never references it.
     rviz_node = Node(
         condition=IfCondition(rviz),
         package="rviz2",
         executable="rviz2",
         name="rviz2",
         output="log",
-        arguments=["-d", PathJoinSubstitution([
-            FindPackageShare("nav2_bringup"), "rviz",
-            "nav2_default_view.rviz"])],
+        arguments=["-d", rviz_config],
     )
 
     # No AMCL, no map_server: RTAB-Map already owns map->odom and /map.

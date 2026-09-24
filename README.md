@@ -12,16 +12,132 @@ An intelligent multi-robot swarm robotics platform integrating 3D perception, se
 
 ---
 
-A modular, production-oriented research prototype for a multi-robot
-Leader-Follower swarm: semantic 3D perception (YOLO + Depth Anything 3),
-metric object localization, D* Lite / DWA navigation, MQTT swarm
-communication, formation control, and an optional asynchronous ShapeR
-reconstruction service.
+A modular research prototype for a multi-robot Leader-Follower swarm. The
+current focus is a **single Leader UGV**: a ROS 2 Humble LiDAR + RGB-D
+navigation stack (RPLIDAR C1, Intel RealSense D435, ICP odometry, RTAB-Map,
+Nav2) alongside a Python perception runtime (YOLO + monocular depth, 3D
+object fusion, tracking). MQTT swarm communication, formation control and
+an optional asynchronous ShapeR reconstruction service are planned and
+present only as interfaces.
 
 This repository is being built **phase by phase** (see "Roadmap" below).
-**Phase 1 is implemented and runnable today.** Everything past Phase 1 is
-present only as typed interfaces/stubs so later phases plug in without
-reshaping what already works.
+The sections below state what is validated, what is partial, and what does
+not exist yet. Full per-layer detail is in
+[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md).
+
+## Current validated state
+
+### Hardware
+
+| Component | Role |
+|---|---|
+| NVIDIA Jetson Orin Nano 8 GB | Main compute: ROS 2, SLAM, Nav2, perception |
+| Raspberry Pi 4 | Low-level hardware / control (integration in progress) |
+| Slamtec RPLIDAR C1 | 2D LiDAR, `/dev/ttyUSB0`, 460800 baud |
+| Intel RealSense D435 | RGB-D camera (no internal IMU; the D435 is not a D435i) |
+| External IMU | Part of the platform; not used by the current ROS 2 launch |
+| 2WD differential-drive chassis | Physical motor/chassis integration **not complete** |
+
+### ROS 2 navigation stack (`ros2_bringup/`)
+
+```
+RPLIDAR C1 (/scan) ──► ICP odometry ──► RTAB-Map (LiDAR-only SLAM)
+      │                (odom→base_link)   (map→odom, map)
+      │                                        │
+      ├──────────────► Nav2 global costmap ◄───┘   (LiDAR only)
+      │                        │
+      └──────┐                 ▼
+             ├──► Nav2 local voxel costmap ──► planner + controller ──► /cmd_vel
+D435 ────────┘
+(/camera/camera/depth/color/points, PointCloud2)
+```
+
+* **ROS 2 Humble** on the Jetson Orin Nano.
+* **RPLIDAR C1** on `/dev/ttyUSB0` at **460800 baud**, publishing `/scan`.
+* **Static TF:** `base_link → laser` and `base_link → camera_link`.
+* **ICP odometry** (`rtabmap_odom`) from the LiDAR scan: `/odom` and
+  `odom → base_link`.
+* **RTAB-Map** SLAM: `map → odom` and the occupancy map. RTAB-Map uses the
+  LiDAR only; the D435 is deliberately not used for SLAM.
+* **Nav2**: planner, controller, behaviours. No AMCL and no `map_server`,
+  because RTAB-Map already provides `map → odom` and the map.
+  * **Global costmap:** LiDAR (`/scan`) only.
+  * **Local costmap:** a voxel layer with two obstacle sources, LiDAR
+    `/scan` and the D435 PointCloud2 `/camera/camera/depth/color/points`.
+* **D435 point cloud:** enabled with the ARM-specific parameter
+  `pointcloud__neon_.enable` (the generic `pointcloud.enable` is ignored by
+  the RealSense wrapper on the Jetson).
+* **RViz2** with a lightweight project config,
+  `ros2_bringup/rviz/sentinel_lite.rviz` (see below).
+
+### Validation status
+
+| Item | Status |
+|---|---|
+| RPLIDAR C1 `/scan` | **Validated** |
+| ICP odometry | **Validated** |
+| RTAB-Map SLAM | **Validated** |
+| D435 RGB + depth | **Validated** |
+| D435 PointCloud2 in the Nav2 local voxel costmap | **Validated** |
+| Nav2 local costmap with LiDAR + D435 obstacle sources | **Validated** |
+| Nav2 global planning | **Validated** |
+| Nav2 controller velocity output (`/cmd_vel`) | **Validated** (see the controller note below) |
+| Clean, final room map | **Not completed.** Only partial test maps exist so far |
+| `/cmd_vel` → motors | **Not connected.** Motors remain disabled; no motor-control code exists in this repository |
+| Physical autonomous driving | **Not validated.** Motor/chassis integration is not complete |
+| Swarm / follower robots | **Not implemented** |
+
+> **Nav2 controller note.** The validated controller behaviour currently
+> depends on a patched `nav2_controller` built in a **separate overlay
+> workspace outside this repository**, which addresses a goal-check issue
+> in the stock ROS 2 Humble controller. This repository does **not**
+> contain that patch. With the stock `nav2_controller`, the controller's
+> goal-check behaviour may differ from what is described here.
+
+### Running the ROS 2 stack
+
+Prerequisites: ROS 2 Humble with `rplidar_ros`, `realsense2_camera`,
+`rtabmap_ros` (`rtabmap_odom`, `rtabmap_slam`, `rtabmap_viz`) and
+`nav2_bringup` installed, and the user in the `dialout` group for the
+LiDAR serial port.
+
+```bash
+source /opt/ros/humble/setup.bash
+cd ros2_bringup
+ros2 launch ./lidar_d435_nav.launch.py rviz:=true viz:=false
+```
+
+Startup is staged, and the delays matter because Nav2's costmaps need the
+full `map → odom → base_link` chain before they start:
+
+| t | Component |
+|---|---|
+| 0 s | RPLIDAR C1, D435, static TFs |
+| 3 s | ICP odometry |
+| 6 s | RTAB-Map |
+| 9 s | RViz2 / rtabmap_viz |
+| 12 s | Nav2 |
+
+Useful overrides: `camera:=false` (LiDAR only), `nav2:=false` (SLAM only),
+`port:=/dev/ttyUSB1`, `params_file:=/abs/path/nav2_lidar_d435_params.yaml`,
+`rviz_config:=/abs/path/other.rviz`, and `cam_x`, `cam_z`, `cam_pitch` for
+the camera mount. **The mounting offsets and robot footprint/velocity
+limits are bench placeholders** and must be measured on the final chassis.
+`lidar_nav.launch.py` with `nav2_lidar_params.yaml` is the same stack
+without the camera.
+
+The launch file refuses to start a second concurrent instance, because
+running it twice would duplicate every Nav2 and RTAB-Map node in the ROS
+graph.
+
+**RViz.** `sentinel_lite.rviz` shows TF, LaserScan, Map, Global Costmap,
+Local Costmap, Global Plan, Local Plan, Footprint, Odometry and Grid, plus
+the Nav2 goal tool. It intentionally has **no PointCloud2 or Image
+displays**: rendering the full D435 point cloud in RViz on the Orin Nano
+is heavy enough to freeze the session. A map appearing in RViz does not
+mean a finished map exists.
+
+The rest of this README covers the Python perception and leader runtime.
 
 ## Architecture at a glance
 <div align="center">
@@ -82,7 +198,7 @@ sentinel-swarm/
 │   ├── mqtt.yaml                 # broker + topics (Phase 5+)
 │   ├── robots.yaml               # fleet definition (leader/follower_01/02)
 │   ├── leader.yaml                # leader-only mode flags (Phase 1A)
-│   ├── lidar.yaml                  # XPLIDAR driver + obstacle sectors (Phase 1B)
+│   ├── lidar.yaml                  # Python-runtime LiDAR driver + obstacle sectors (Phase 1B)
 │   └── safety.yaml                  # safety envelope contract (enforced starting Phase 1G)
 ├── common/
 │   ├── types.py                  # BBox, Detection2D, DetectedObject3D, Pose3D, LidarScan, ...
@@ -117,6 +233,15 @@ sentinel-swarm/
 ├── visualization/
 │   ├── dashboard.py                 # Phase 1 monitoring dashboard (camera/YOLO/depth)
 │   └── lidar_view.py                  # Phase 1B: live LiDAR scan + sector clearances
+├── ros2_bringup/                        # ROS 2 Humble navigation stack (see "Current validated state")
+│   ├── lidar_d435_nav.launch.py          # RPLIDAR C1 + D435 + ICP odometry + RTAB-Map + Nav2
+│   ├── nav2_lidar_d435_params.yaml        # Nav2 params: LiDAR global costmap, LiDAR+D435 local voxel costmap
+│   ├── lidar_nav.launch.py                 # same stack, LiDAR only
+│   ├── nav2_lidar_params.yaml               # Nav2 params for the LiDAR-only stack
+│   └── rviz/sentinel_lite.rviz               # lightweight RViz2 config (no PointCloud2/Image)
+├── tools/                                   # Jetson preflight, hardware and D435 validation CLIs
+├── validation/                               # committed D435 validation reports
+├── docs/                                      # project status, hardware notes, diagrams
 └── tests/
     ├── test_fusion.py
     ├── test_depth_interface.py
@@ -275,6 +400,13 @@ untouched) that draws a top-down polar plot of the live scan plus sector
 clearances, device status (port/baud/scan rate) and the front safety level
 when `run_leader.py` isn't run with `--headless`.
 
+> **LiDAR hardware note.** The Python leader runtime's real-hardware
+> driver targets the **YDLiDAR X4 Pro**, the LiDAR used earlier in the
+> project. The robot now uses an **RPLIDAR C1**, which is driven through
+> ROS 2 (`rplidar_ros`) in `ros2_bringup/`, not through this Python driver.
+> The X4 Pro sections below document that earlier driver and remain
+> accurate for it; `--simulation` (MockLidar) works regardless.
+
 ### YDLiDAR X4 Pro configuration
 
 `config/lidar.yaml` carries the device profile. The hardware-fact fields
@@ -348,7 +480,8 @@ mistaken for current ones, and with `auto_reconnect: true` a USB
 disconnect is recovered without restarting the process.
 
 **No motor-control code exists anywhere in the repository yet** — that's
-Phase 1E/1F. `config/leader.yaml`'s `motors_enabled: false` and
+Phase 1E/1F. Nav2 in `ros2_bringup/` publishes velocity commands, but
+nothing in this repository drives motors from them. `config/leader.yaml`'s `motors_enabled: false` and
 `config/safety.yaml` (heartbeat timeout, caution/stop/emergency distances,
 velocity limits) are the config *contract* those phases will enforce
 against; the enforcing code (`navigation/safety_controller.py`, the
@@ -670,8 +803,8 @@ validation profile is 640x480 at 30 FPS; do not use it as an IMU source.
 |---|---|---|
 | 1 | Camera capture, YOLO detection, DA3 depth, visualization | **Done** |
 | 2 | 2D→3D object localization refinement, tracking hardening | Fusion + tracker shipped in Phase 1's foundation; hardening next |
-| 3 | Local robot pose estimation (PoseEstimator), semantic map wiring | Interfaces shipped (`localization/`, `mapping/semantic_map.py`); wiring pending |
-| 4 | D* Lite global planning, DWA local planning, obstacle avoidance | Interfaces shipped (`navigation/base_planner.py`); implementations pending |
+| 3 | Robot pose estimation and mapping | ROS 2: ICP odometry + RTAB-Map **validated**; clean final room map not yet completed. Python `localization/` interface and semantic map wiring pending |
+| 4 | Global/local planning, obstacle avoidance | ROS 2 Nav2: planning, LiDAR + D435 local costmap and controller velocity output **validated**; physical driving not yet validated. Python `navigation/base_planner.py` is interface-only |
 | 5 | MQTT, leader broadcasting | Client + config shipped (`swarm/communication_client.py`); wiring pending |
 | 6 | Follower formation control | Formation offsets already in `config/navigation.yaml`; controller pending |
 | 7 | Multi-robot semantic map fusion | `SemanticMap.merge_objects()`/`add_observation()` ready to receive it |
